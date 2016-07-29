@@ -1,8 +1,21 @@
-# Hidapi
+# HidApi
 
-Welcome to your new gem! In this directory, you'll find the files you need to be able to package up your Ruby library into a gem. Put your Ruby code in the file `lib/hidapi`. To experiment with that code, run `bin/console` for an interactive prompt.
+This is a Ruby port of the [HID API from Signal 11](http://www.signal11.us/oss/hidapi).  More specifically, it is a 
+port of the "libusb" version of the HID API.  I took creative liberty where I needed to and basically just sought to 
+make it work uniformly.  The gem relies on the [libusb](https://rubygems.org/gems/libusb).
+ 
+I know there are at least two other projects that were meant to bring an HID API to the Ruby world.  However, one of
+them is a C plugin (no real problem, just not Ruby) and the other is an FFI wrapper around the original HID API with
+a few missing components.  I didn't see any reason to bring FFI into it when the end result is something fairly simple.
 
-TODO: Delete this and the text above, and describe your gem
+The entire library basically consists of the HidApi::Engine and the HidApi::Device classes.  The HidApi module maintains
+an instance of the HidApi::Engine and maps missing methods to the engine.  So basically `HidApi.enumerate` is the same
+as `HidApi.engine.enumerate` where the `engine` method creates an HidApi::Engine on the first call.  The HidApi::Engine
+class is used to enumerate and retrieve devices, while the HidApi::Device class is used for everything else.
+
+The original source included internationalization.  I have not included that (yet), but the HidApi::Language class has
+been defined and the [i18n](https://rubygems.org/gems/i18n) is required, even though we aren't using it yet.
+
 
 ## Installation
 
@@ -19,6 +32,9 @@ And then execute:
 Or install it yourself as:
 
     $ gem install hidapi
+
+
+
 
 ## Usage
 

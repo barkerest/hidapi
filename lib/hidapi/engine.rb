@@ -17,8 +17,11 @@ module HidApi
     # Enumerates the HID devices matching the vendor and product IDs.
     #
     # Both vendor_id and product_id are optional.  They will act as a wild card if set to 0 (the default).
-    def enumerate(vendor_id = 0, product_id = 0)
+    def enumerate(vendor_id = 0, product_id = 0, options = {})
       raise HidApi::HidApiError, 'not initialized' unless @context
+
+      klass = (options || {}).delete(:as) || 'HidApi::Device'
+      klass = Object.const_get(klass) unless klass == :no_mapping
 
       filters = { bClass: HID_CLASS }
 
@@ -31,19 +34,39 @@ module HidApi
 
       list = @context.devices(filters)
 
-      list.map{|dev| HidApi::Device.new(dev)}
+      if klass != :no_mapping
+        list.to_a.map{ |dev| klass.new(dev) }
+      else
+        list.to_a
+      end
     end
 
     ##
     # Gets the first device with the specified vendor_id, product_id, and optionally serial_number.
-    def get_device(vendor_id, product_id, serial_number = nil)
+    def get_device(vendor_id, product_id, serial_number = nil, options = {})
       raise ArgumentError, 'vendor_id must be provided' if vendor_id.to_i == 0
       raise ArgumentError, 'product_id must be provided' if product_id.to_i == 0
-      list = enumerate(vendor_id, product_id)
+
+      klass = (options || {}).delete(:as) || 'HidApi::Device'
+      klass = Object.const_get(klass) unless klass == :no_mapping
+
+      list = enumerate(vendor_id, product_id, as: :no_mapping)
       return nil unless list && list.count > 0
-      return list.first if serial_number.to_s == ''
+      if serial_number.to_s == ''
+        if klass != :no_mapping
+          return klass.new(list.first)
+        else
+          return list.first
+        end
+      end
       list.each do |dev|
-        return dev if dev.serial_number == serial_number
+        if dev.serial_number == serial_number
+          if klass != :no_mapping
+            return klass.new(dev)
+          else
+            return dev
+          end
+        end
       end
       nil
     end
@@ -57,13 +80,20 @@ module HidApi
 
     ##
     # Gets the device with the specified path.
-    def get_device_by_path(path)
-      enumerate.each do |usb_dev|
+    def get_device_by_path(path, options = {})
+      klass = (options || {}).delete(:as) || 'HidApi::Device'
+      klass = Object.const_get(klass) unless klass == :no_mapping
+
+      enumerate(as: :no_mapping).each do |usb_dev|
         usb_dev.settings.each do |intf_desc|
           if intf_desc.bInterfaceClass == HID_CLASS
             dev_path = HidApi::make_path(usb_dev, intf_desc.bInterfaceNumber)
             if dev_path == path
-              return HidApi::Device.new(usb_dev.usb_device, intf_desc.bInterfaceNumber)
+              if klass != :no_mapping
+                return klass.new(usb_dev, intf_desc.bInterfaceNumber)
+              else
+                return usb_dev
+              end
             end
           end
         end
@@ -72,7 +102,7 @@ module HidApi
 
     ##
     # Opens the device with the specified path.
-    def open_by_path(path)
+    def open_path(path)
       dev = get_device_by_path(path)
       dev.open if dev
     end
