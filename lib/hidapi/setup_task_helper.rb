@@ -203,7 +203,7 @@ LABEL="hidapi_rules_end"
         end
       end
 
-      line = "# device: #{simple_name}\nATTR{idVendor}==\"#{vendor_id.to_s(16).rjust(4,'0')}\", ATTR{idProduct}==\"#{product_id.to_s(16).rjust(4,'0')}\", MODE=\"0666\", SYMLINK+=\"hidapi/#{simple_name}@%k\""
+      line = "# device: #{simple_name}\nATTR{idVendor}==\"#{vendor_id.to_s(16).rjust(4,'0')}\", ATTR{idProduct}==\"#{product_id.to_s(16).rjust(4,'0')}\", MODE=\"0666\", SYMLINK+=\"hidapi/#{simple_name}@%k\"\n"
 
       if last_line
         contents.insert last_line, line
