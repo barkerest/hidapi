@@ -197,7 +197,7 @@ LABEL="hidapi_rules_end"
       last_line = contents.index { |item| item == 'LABEL="hidapi_rules_end"' }
 
       contents.each do |line|
-        if /^#\s+device:\s+#{simple_name}$/i =~ simple_name
+        if /^#\s+device:\s+#{simple_name}$/i =~ line
           puts 'A udev rule for the specified device already exists.'
           return false
         end
