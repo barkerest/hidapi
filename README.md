@@ -39,24 +39,65 @@ Or install it yourself as:
     $ gem install hidapi
 
 
-
-
 ## Usage
 
-TODO: Write usage instructions here
+Basic usage would be as follows.
+```ruby
+my_dev = HidApi::open(0x4d4d, 0xc0c0)
+my_dev.write 0x01, 0x02, 0x03, 0x04, 0x05
+my_dev.write [ 0x01, 0x02, 0x03, 0x04, 0x05 ]
+my_dev.write "\x01\x02\x03\x04\x05"
+input = my_dev.read
+my_dev.close
+```
 
-## Development
+The `write` method takes data in any of the 3 forms shown above. Individual arguments, an array of arguments, or a string of arguments.
+Internally the first two are converted into the 3rd form using `pack("C*")`.  If you have a custom data set your are sending,
+such as 16 or 32 bit values, then you will likely want to pack the string yourself to prevent issues.
 
-After checking out the repo, run `bin/setup` to install dependencies. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
+The `read` method returns a packed string from the device.  For instance it may return "\x10\x01\x00".  Your application
+needs to know how to handle the values returned.
 
-To install this gem onto your local machine, run `bundle exec rake install`. To release a new version, update the version number in `version.rb`, and then run `bundle exec rake release`, which will create a git tag for the version, push git commits and tags, and push the `.gem` file to [rubygems.org](https://rubygems.org).
+In order to use a USB device in Linux, udev needs to grant access to the user running the application.  If run as root, 
+then it should just work.  However, you'd be running it as root.  A better option is to have udev grant the appropriate permissions.
+
+In order to use a USB device in OS X, the system needs a kernel extension telling the OS not to map the device to its own
+HID drivers.
+
+The `HidApi::SetupTaskHelper` handles both of these situations.  The gem includes a rake task `setup_hid_device` that 
+calls this class.  You can also execute the `lib/hidapi/setup_task_helper.rb` file directly.  However, in your application,
+both of these may be too cumbersome.  You can create an instance of the SetupTaskHelper class with the appropriate arguments
+and just run it yourself.
+
+```ruby
+require "hidapi"
+HidApi::SetupTaskHelper.new(
+  0x04d8,             # vendor_id
+  0xc002,             # product_id
+  "pico-lcd-graphic", # simple_name
+  0                   # interface
+).run
+```
+
+This will take the appropriate action on your OS to make the USB device available for use.  On linux, it will also add
+convenient symlinks to the /dev filesystem.  For instance, the above setup could give you something like `/dev/hidapi/pico-lcd-graphic@1-4`
+that points to the correct USB device.  The library doesn't use them, but the presence of the links in the`/dev/hidapi`
+directory would be a clear indicator that the device has been recognizes and configured.
+
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/[USERNAME]/hidapi.
+Bug reports and pull requests are welcome on GitHub at https://github.com/barkerest/hidapi.
 
 
 ## License
+
+Copyright (c) 2016 [Beau Barker](mailto:beau@barkerest.com)
+
+As said before, this is a port of the [HID API from Signal 11](http://www.signal11.us/oss/hidapi) so it has significant
+code in common with that library, although the very fact that it was ported means that there is no code that was copied
+from that library.  That library can be licensed under the GPL, BSD, or a custom license very similar to the MIT license.
+This gem is not that library.
 
 The gem is available as open source under the terms of the [MIT License](http://opensource.org/licenses/MIT).
 

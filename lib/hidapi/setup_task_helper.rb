@@ -1,3 +1,5 @@
+#!/usr/bin/env ruby
+
 require 'tmpdir'
 
 module HidApi
@@ -35,15 +37,17 @@ module HidApi
       vendor_id != 0 && product_id != 0 && simple_name != ''
     end
 
-    def usage
+    def usage()
       puts <<-USAGE
-Usage: rake setup_hid_device[vendor_id,product_id,simple_name,interface]
+Usage:  bundle exec rake setup_hid_device[vendor_id,product_id,simple_name,interface]
+-OR-    #{File.basename(__FILE__)} vendor_id product_id simple_name interface
   vendor_id should be the 16-bit identifier assigned to the device vendor in hex format.
   product_id should be the 16-bit identifier assigned by the manufacturer in hex format.
   simple_name should be a fairly short name for the device.
   interface is optional and defaults to 0.
 
-  ie - rake setup_hid_device[04d8,c002,pico-lcd-graphic]
+  ie - bundle exec rake setup_hid_device[04d8,c002,pico-lcd-graphic]
+  ie - #{File.basename(__FILE__)} 04d8 c002 pico-lcd-graphic
 USAGE
       false
     end
@@ -226,4 +230,11 @@ LABEL="hidapi_rules_end"
     end
 
   end
+end
+
+
+if $0 == __FILE__
+
+  HidApi::SetupTaskHelper(ARGV[0], ARGV[1], ARGV[2], ARGV[3]).run
+
 end
