@@ -1,24 +1,52 @@
 
 
 module HidApi
+
+  ##
+  # This class is the interface to a HID device.
+  #
+  # Each instance can connect to a single interface on an HID device.
+  # If you have more than one interface, you will need to have more
+  # than one instance of this class to work with all of them.
+  #
+  # When open, the device is polled continuously for incoming data.
+  # It will build up a cache of up to 32 packets.  If you are not
+  # reading from the device, it will silently discard the oldest
+  # packets and continue storing the newest packets.
+  #
+  # The read method can block.  This is controlled by the +blocking+
+  # attribute.  The default value is true.  If you want the read method
+  # to be non-blocking, set this attribute to false.
   class Device
 
     ##
     # Gets the USB device this HID device uses.
     attr_accessor :usb_device
-    private :usb_device
+    private :usb_device=
 
+    ##
+    # Gets the device handle for I/O.
     attr_accessor :handle
-    private :handle, :handle=
+    private :handle=
+    protected :handle
 
+    ##
+    # Gets the input endpoint.
     attr_accessor :input_endpoint
-    private :input_endpoint, :input_endpoint=
+    private :input_endpoint=
+    protected :input_endpoint
 
+    ##
+    # Gets the output endpoint.
     attr_accessor :output_endpoint
-    private :output_endpoint, :output_endpoint=
+    private :output_endpoint=
+    protected :output_endpoint
 
+    ##
+    # Gets the maximum packet size for input packets.
     attr_accessor :input_ep_max_packet_size
-    private :input_ep_max_packet_size, :input_ep_max_packet_size=
+    private :input_ep_max_packet_size=
+    protected :input_ep_max_packet_size
 
     ##
     # Gets the interface this HID device uses on the USB device.
@@ -53,7 +81,7 @@ module HidApi
     private :input_reports, :input_reports=
 
     ##
-    # Gets the path for this device that can be used by HidApi::Engine#get_by_path
+    # Gets the path for this device that can be used by HidApi::Engine#get_device_by_path
     attr_accessor :path
     private :path=
 
@@ -86,19 +114,19 @@ module HidApi
     ##
     # Gets the manufacturer of the device.
     def manufacturer
-      @manufacturer ||= get_usb_string(usb_device.iManufacturer, "VENDOR(0x#{vendor_id.to_hex(4)})").strip
+      @manufacturer ||= read_string(usb_device.iManufacturer, "VENDOR(0x#{vendor_id.to_hex(4)})").strip
     end
 
     ##
     # Gets the product/model of the device.
     def product
-      @product ||= get_usb_string(usb_device.iProduct, "PRODUCT(0x#{product_id.to_hex(4)})").strip
+      @product ||= read_string(usb_device.iProduct, "PRODUCT(0x#{product_id.to_hex(4)})").strip
     end
 
     ##
     # Gets the serial number of the device.
     def serial_number
-      @serial_number ||= get_usb_string(usb_device.iSerialNumber, '?').strip
+      @serial_number ||= read_string(usb_device.iSerialNumber, '?').strip
     end
 
     ##
@@ -384,6 +412,60 @@ module HidApi
     end
 
 
+    ##
+    # Reads a string descriptor from the USB device.
+    def read_string(index, on_failure = '')
+      begin
+        # does not require an interface, so open from the usb_dev instead of using our open method.
+        data = usb_device.open { |handle| handle.string_descriptor_ascii(index) }
+        HidApi.debug("read string at index #{index} for device #{path}: #{data.inspect}")
+        data
+      rescue =>e
+        HidApi.debug("failed to read string at index #{index} for device #{path}: #{e.inspect}")
+        on_failure || ''
+      end
+    end
+
+
+    protected
+
+    ##
+    # Defines a hook to execute when data is read from the device.
+    #
+    # This can be provided as a proc, symbol, or simply as a block.
+    #
+    # The proc should return a true value if it consumes the data.
+    # If it does not consume the data it must return false or nil.
+    #
+    # If no read_hook proc consumes the data, it will be cached for
+    # future calls to +read+ or +read_timeout+.
+    #
+    # The read hook is called from within the read thread. If it must
+    # access resources from another thread, you will want to use
+    # a mutex for locking.
+    #
+    # :yields: a device and the input_report
+    #
+    #   read_hook do |device, input_report|
+    #     ...
+    #     true
+    #   end
+    def self.read_hook(proc = nil, &block)
+      @read_hook ||= []
+
+      proc = block if proc.nil? && block_given?
+      if proc
+        if proc.is_a?(Symbol) || proc.is_a?(String)
+          proc = Proc.new do |dev, input_report|
+            dev.send(proc, input_report)
+          end
+        end
+        @read_hook << proc
+      end
+
+      @read_hook
+    end
+
     private
 
     def clean_output_data(data)
@@ -444,9 +526,9 @@ module HidApi
           context.handle_events 0
         rescue LIBUSB::ERROR_BUSY, LIBUSB::ERROR_TIMEOUT, LIBUSB::ERROR_OVERFLOW, LIBUSB::ERROR_INTERRUPTED => e
           # non fatal errors.
-          mutex.synchronize { HidApi.debug "non-fatal error for read_thread on device #{path}: #{e.inspect}" }
+          HidApi.debug "non-fatal error for read_thread on device #{path}: #{e.inspect}"
         rescue => e
-          mutex.synchronize { HidApi.debug "fatal error for read_thread on device #{path}: #{e.inspect}" }
+          HidApi.debug "fatal error for read_thread on device #{path}: #{e.inspect}"
           self.shutdown_thread = true
           raise e
         end
@@ -467,53 +549,53 @@ module HidApi
 
     def read_callback(tr)
       if tr.status == :TRANSFER_COMPLETED
-        mutex.synchronize do
-          input_reports << tr.actual_buffer
-          input_reports.delete_at(0) while input_reports.length > 30
+        data = tr.actual_buffer
+
+        consumed = false
+        self.class.read_hook.each do |proc|
+          consumed =
+              begin
+                proc.call(self, data)
+              rescue =>e
+                HidApi.debug "read_hook failed for device #{path}: #{e.inspect}"
+                false
+              end
+          break if consumed
+        end
+
+        unless consumed
+          mutex.synchronize do
+            input_reports << tr.actual_buffer
+            input_reports.delete_at(0) while input_reports.length > 32
+          end
         end
       elsif tr.status == :TRANSFER_CANCELLED
         mutex.synchronize do
           self.shutdown_thread = true
           transfer_cancelled.completed = true
-          HidApi.debug "read transfer cancelled for device #{path}"
         end
+        HidApi.debug "read transfer cancelled for device #{path}"
       elsif tr.status == :TRANSFER_NO_DEVICE
         mutex.synchronize do
           self.shutdown_thread = true
           transfer_cancelled.completed = true
-          HidApi.debug "read transfer failed with no device for device #{path}"
         end
+        HidApi.debug "read transfer failed with no device for device #{path}"
       elsif tr.status == :TRANSFER_TIMED_OUT
         # ignore timeouts, they are normal
       else
-        mutex.synchronize { HidApi.debug "read transfer with unknown transfer code (#{tr.status}) for device #{path}" }
+        HidApi.debug "read transfer with unknown transfer code (#{tr.status}) for device #{path}"
       end
 
       # resubmit the transfer object.
       begin
         tr.submit!
       rescue =>e
+        HidApi.debug "failed to resubmit transfer for device #{path}: #{e.inspect}"
         mutex.synchronize do
-          HidApi.debug "failed to resubmit transfer for device #{path}: #{e.inspect}"
           self.shutdown_thread = true
           transfer_cancelled.completed = true
         end
-      end
-    end
-
-    ##
-    # Gets a string descriptor from the USB device.
-    #
-    # Almost identical to try_string_descriptor_ascii, except we allow the failure value to be specified.
-    def get_usb_string(index, on_failure = '')
-      begin
-        # does not require an interface, so open from the usb_dev instead of using our open method.
-        data = usb_device.open { |handle| handle.string_descriptor_ascii(index) }
-        HidApi.debug("read string at index #{index} for device #{path}: #{data.inspect}")
-        data
-      rescue =>e
-        HidApi.debug("failed to read string at index #{index} for device #{path}: #{e.inspect}")
-        on_failure || ''
       end
     end
 

@@ -1,5 +1,8 @@
 
 module HidApi
+
+  ##
+  # A wrapper around the USB context that makes it easy to locate HID devices.
   class Engine
 
     ##
@@ -128,11 +131,11 @@ module HidApi
     end
 
 
-    def inspect
+    def inspect   # :nodoc:
       "#<#{self.class.name}:#{self.object_id.to_hex(16)} context=0x#{@context.object_id.to_hex(16)}>"
     end
 
-    def to_s
+    def to_s      # :nodoc:
       inspect
     end
 

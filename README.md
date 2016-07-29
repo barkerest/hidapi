@@ -1,8 +1,13 @@
 # HidApi
 
-This is a Ruby port of the [HID API from Signal 11](http://www.signal11.us/oss/hidapi).  More specifically, it is a 
+This is a Ruby port of the [HID API from Signal 11](http://www.signal11.us/oss/hidapi).
+  
+__I am not associated with Signal 11.__
+
+More specifically, it is a 
 port of the "libusb" version of the HID API.  I took creative liberty where I needed to and basically just sought to 
 make it work uniformly.  The gem relies on the [libusb](https://rubygems.org/gems/libusb).
+
  
 I know there are at least two other projects that were meant to bring an HID API to the Ruby world.  However, one of
 them is a C plugin (no real problem, just not Ruby) and the other is an FFI wrapper around the original HID API with
