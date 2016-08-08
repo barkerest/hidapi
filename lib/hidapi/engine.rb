@@ -23,6 +23,14 @@ module HIDAPI
     def enumerate(vendor_id = 0, product_id = 0, options = {})
       raise HIDAPI::HidApiError, 'not initialized' unless @context
 
+      if options.is_a?(String) || options.is_a?(Symbol)
+        options = { as: options }
+      end
+
+      unless options.nil? || options.is_a?(Hash)
+        raise ArgumentError, 'options hash is invalid'
+      end
+
       klass = (options || {}).delete(:as) || 'HIDAPI::Device'
       klass = Object.const_get(klass) unless klass == :no_mapping
 
