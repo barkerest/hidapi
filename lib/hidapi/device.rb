@@ -107,6 +107,10 @@ module HIDAPI
       self.shutdown_thread    = false
       self.transfer_cancelled = LIBUSB::Context::CompletionFlag.new
       self.open_count         = 0
+
+      self.class.init_hook.each do |proc|
+        proc.call self
+      end
     end
 
 
@@ -461,13 +465,33 @@ module HIDAPI
       if proc
         if proc.is_a?(Symbol) || proc.is_a?(String)
           proc = Proc.new do |dev, input_report|
-            dev.send(proc, input_report)
+            dev.send(proc, dev, input_report)
           end
         end
         @read_hook << proc
       end
 
       @read_hook
+    end
+
+    ##
+    # Defines a hook to execute when a device is initialized.
+    #
+    # Yields the device instance.
+    def self.init_hook(proc = nil, &block)
+      @init_hook ||= []
+
+      proc = block if proc.nil? && block_given?
+      if proc
+        if proc.is_a?(Symbol) || proc.is_a?(String)
+          proc = Proc.new do |dev|
+            dev.send(proc, dev)
+          end
+        end
+        @init_hook << proc
+      end
+
+      @init_hook
     end
 
     private
