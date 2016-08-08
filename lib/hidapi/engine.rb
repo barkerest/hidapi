@@ -1,5 +1,5 @@
 
-module HidApi
+module HIDAPI
 
   ##
   # A wrapper around the USB context that makes it easy to locate HID devices.
@@ -21,9 +21,9 @@ module HidApi
     #
     # Both vendor_id and product_id are optional.  They will act as a wild card if set to 0 (the default).
     def enumerate(vendor_id = 0, product_id = 0, options = {})
-      raise HidApi::HidApiError, 'not initialized' unless @context
+      raise HIDAPI::HidApiError, 'not initialized' unless @context
 
-      klass = (options || {}).delete(:as) || 'HidApi::Device'
+      klass = (options || {}).delete(:as) || 'HIDAPI::Device'
       klass = Object.const_get(klass) unless klass == :no_mapping
 
       filters = { bClass: HID_CLASS }
@@ -50,7 +50,7 @@ module HidApi
       raise ArgumentError, 'vendor_id must be provided' if vendor_id.to_i == 0
       raise ArgumentError, 'product_id must be provided' if product_id.to_i == 0
 
-      klass = (options || {}).delete(:as) || 'HidApi::Device'
+      klass = (options || {}).delete(:as) || 'HIDAPI::Device'
       klass = Object.const_get(klass) unless klass == :no_mapping
 
       list = enumerate(vendor_id, product_id, as: :no_mapping)
@@ -84,13 +84,13 @@ module HidApi
     ##
     # Gets the device with the specified path.
     def get_device_by_path(path, options = {})
-      klass = (options || {}).delete(:as) || 'HidApi::Device'
+      klass = (options || {}).delete(:as) || 'HIDAPI::Device'
       klass = Object.const_get(klass) unless klass == :no_mapping
 
       enumerate(as: :no_mapping).each do |usb_dev|
         usb_dev.settings.each do |intf_desc|
           if intf_desc.bInterfaceClass == HID_CLASS
-            dev_path = HidApi::make_path(usb_dev, intf_desc.bInterfaceNumber)
+            dev_path = HIDAPI::make_path(usb_dev, intf_desc.bInterfaceNumber)
             if dev_path == path
               if klass != :no_mapping
                 return klass.new(usb_dev, intf_desc.bInterfaceNumber)
@@ -118,10 +118,10 @@ module HidApi
             locale = I18n.locale
             if locale
               locale = locale.to_s.partition('.')[0]  # remove encoding
-              result = HidApi::Language.get_by_code(locale)
+              result = HIDAPI::Language.get_by_code(locale)
               unless result
                 locale = locale.partition('_')[0]     # chop off extra specification
-                result = HidApi::Language.get_by_code(locale)
+                result = HIDAPI::Language.get_by_code(locale)
               end
               result ? result[:usb_code] : 0
             else

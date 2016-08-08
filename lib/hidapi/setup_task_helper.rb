@@ -2,7 +2,7 @@
 
 require 'tmpdir'
 
-module HidApi
+module HIDAPI
   class SetupTaskHelper
 
     attr_reader :vendor_id, :product_id, :simple_name, :interface
@@ -78,7 +78,7 @@ USAGE
     end
 
     def run_windows
-      puts 'No setup should be needed for windows.'
+      puts "Please use the Zadig tool from http://zadig.akeo.ie/ to install a driver for your device.\nThis script unfortunately does not do this for you automatically at this point in time."
     end
 
     def run_osx
@@ -235,6 +235,6 @@ end
 
 if $0 == __FILE__
 
-  HidApi::SetupTaskHelper(ARGV[0], ARGV[1], ARGV[2], ARGV[3]).run
+  HIDAPI::SetupTaskHelper(ARGV[0], ARGV[1], ARGV[2], ARGV[3]).run
 
 end

@@ -5,7 +5,7 @@ require 'hidapi/version'
 
 Gem::Specification.new do |spec|
   spec.name          = 'hidapi'
-  spec.version       = HidApi::VERSION
+  spec.version       = HIDAPI::VERSION
   spec.authors       = ['Beau Barker']
   spec.email         = ['beau@barkerest.com']
 

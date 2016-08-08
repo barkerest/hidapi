@@ -10,20 +10,20 @@ require 'hidapi/version'
 # By writing it, I learned quite a bit about HID devices and how to get them
 # working with multiple operating systems from one Ruby gem. To do this, I use LIBUSB.
 #
-# This module contains the library and wraps around an instance of the HidApi::Engine
-# class to simplify calls.  For instance, HidApi.engine.enumerate can also be used as
-# just HidApi.enumerate.
+# This module contains the library and wraps around an instance of the HIDAPI::Engine
+# class to simplify calls.  For instance, HIDAPI.engine.enumerate can also be used as
+# just HIDAPI.enumerate.
 #
-module HidApi
+module HIDAPI
 
   raise 'LIBUSB version must be at least 1.0' unless LIBUSB.version.major >= 1
 
   ##
   # Gets the engine used by the API.
   #
-  # All engine methods can be passed through the HidApi module.
+  # All engine methods can be passed through the HIDAPI module.
   def self.engine
-    @engine ||= HidApi::Engine.new
+    @engine ||= HIDAPI::Engine.new
   end
 
 
@@ -32,7 +32,7 @@ module HidApi
       engine.send(m,*a,&b)
     else
       # no super available for modules.
-      raise NoMethodError, "undefined method `#{m}` for HidApi:Module"
+      raise NoMethodError, "undefined method `#{m}` for HIDAPI:Module"
     end
   end
 
@@ -67,6 +67,13 @@ module HidApi
     end
   end
 
+  private
+
+  def self.mutex
+    @mutex ||= Mutex.new
+  end
+
+
   if ENV['ENABLE_DEBUG'].to_s.to_i != 0
     set_debugger do |msg|
       msg = msg.to_s.strip
@@ -78,13 +85,6 @@ module HidApi
       end
     end
   end
-
-  private
-
-  def self.mutex
-    @mutex ||= Mutex.new
-  end
-
 
 end
 

@@ -1,11 +1,11 @@
-module HidApi
+module HIDAPI
 
   ##
-  # A general error from the HidApi library.
+  # A general error from the HIDAPI library.
   HidApiError = Class.new(StandardError)
 
   ##
-  # The device supplied was invalid for the HidApi::Device class.
+  # The device supplied was invalid for the HIDAPI::Device class.
   InvalidDevice = Class.new(HidApiError)
 
   ##

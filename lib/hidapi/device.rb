@@ -1,6 +1,6 @@
 
 
-module HidApi
+module HIDAPI
 
   ##
   # This class is the interface to a HID device.
@@ -81,7 +81,7 @@ module HidApi
     private :input_reports, :input_reports=
 
     ##
-    # Gets the path for this device that can be used by HidApi::Engine#get_device_by_path
+    # Gets the path for this device that can be used by HIDAPI::Engine#get_device_by_path
     attr_accessor :path
     private :path=
 
@@ -92,13 +92,13 @@ module HidApi
     ##
     # Initializes an HID device.
     def initialize(usb_device, interface = 0)
-      raise HidApi::InvalidDevice, "invalid object (#{usb_device.class.name})" unless usb_device.is_a?(LIBUSB::Device)
+      raise HIDAPI::InvalidDevice, "invalid object (#{usb_device.class.name})" unless usb_device.is_a?(LIBUSB::Device)
 
       self.usb_device = usb_device
       self.blocking   = true
       self.mutex      = Mutex.new
       self.interface  = interface
-      self.path       = HidApi::Device.make_path(usb_device, interface)
+      self.path       = HIDAPI::Device.make_path(usb_device, interface)
 
       self.input_endpoint     = self.output_endpoint = nil
       self.thread             = nil
@@ -154,26 +154,26 @@ module HidApi
     def close
       self.open_count = open_count - 1
       if open_count <= 0
-        HidApi.debug("open_count for device #{path} is #{open_count}") if open_count < 0
+        HIDAPI.debug("open_count for device #{path} is #{open_count}") if open_count < 0
         if handle
           begin
             self.shutdown_thread = true
             transfer.cancel! rescue nil if transfer
             thread.join
           rescue =>e
-            HidApi.debug "failed to kill read thread on device #{path}: #{e.inspect}"
+            HIDAPI.debug "failed to kill read thread on device #{path}: #{e.inspect}"
           end
           begin
             handle.release_interface(interface)
           rescue =>e
-            HidApi.debug "failed to release interface on device #{path}: #{e.inspect}"
+            HIDAPI.debug "failed to release interface on device #{path}: #{e.inspect}"
           end
           begin
             handle.close
           rescue =>e
-            HidApi.debug "failed to close device #{path}: #{e.inspect}"
+            HIDAPI.debug "failed to close device #{path}: #{e.inspect}"
           end
-          HidApi.debug "closed device #{path}"
+          HIDAPI.debug "closed device #{path}"
         end
         self.handle = nil
         mutex.synchronize { self.input_reports = [] }
@@ -190,7 +190,7 @@ module HidApi
       if open?
         self.open_count = open_count + 1
         if open_count < 1
-          HidApi.debug "open_count for open device #{path} is #{open_count}"
+          HIDAPI.debug "open_count for open device #{path} is #{open_count}"
           self.open_count = 1
         end
         return self
@@ -200,8 +200,12 @@ module HidApi
         self.handle = usb_device.open
         raise 'no handle returned' unless handle
 
-        if handle.kernel_driver_active?(interface)
-          handle.detach_kernel_driver(interface)
+        begin
+          if handle.kernel_driver_active?(interface)
+            handle.detach_kernel_driver(interface)
+          end
+        rescue LIBUSB::ERROR_NOT_SUPPORTED
+          HIDAPI.debug 'cannot determine kernel driver status, continuing to open device'
         end
 
         handle.claim_interface(interface)
@@ -239,10 +243,10 @@ module HidApi
       rescue =>e
         handle.close rescue nil
         self.handle = nil
-        HidApi.debug "failed to open device #{path}: #{e.inspect}"
+        HIDAPI.debug "failed to open device #{path}: #{e.inspect}"
         raise DeviceOpenFailed, e.inspect
       end
-      HidApi.debug "opened device #{path}"
+      HIDAPI.debug "opened device #{path}"
       self.open_count = 1
       self
     end
@@ -253,7 +257,7 @@ module HidApi
     # The data to be written can be individual byte values, an array of byte values, or a string packed with data.
     def write(*data)
       raise ArgumentError, 'data must not be blank' if data.nil? || data.length < 1
-      raise HidApi::DeviceNotOpen unless open?
+      raise HIDAPI::DeviceNotOpen unless open?
 
       data, report_number, skipped_report_id = clean_output_data(data)
 
@@ -292,12 +296,12 @@ module HidApi
       mutex.synchronize do
         if input_reports.count > 0
           data = input_reports.delete_at(0)
-          HidApi.debug "read data from device #{path}: #{data.inspect}"
+          HIDAPI.debug "read data from device #{path}: #{data.inspect}"
           return data
         end
 
         if shutdown_thread
-          HidApi.debug "read thread for device #{path} is not running"
+          HIDAPI.debug "read thread for device #{path} is not running"
           return nil
         end
       end
@@ -311,7 +315,7 @@ module HidApi
           mutex.synchronize do
             if input_reports.count > 0
               data = input_reports.delete_at(0)
-              HidApi.debug "read data from device #{path}: #{data.inspect}"
+              HIDAPI.debug "read data from device #{path}: #{data.inspect}"
               return data
             end
           end
@@ -319,7 +323,7 @@ module HidApi
         end
 
         # error, return nil
-        HidApi.debug "read thread ended while waiting on device #{path}"
+        HIDAPI.debug "read thread ended while waiting on device #{path}"
         nil
       else
         # wait up to so many milliseconds for input.
@@ -328,7 +332,7 @@ module HidApi
           mutex.synchronize do
             if input_reports.count > 0
               data = input_reports.delete_at(0)
-              HidApi.debug "read data from device #{path}: #{data.inspect}"
+              HIDAPI.debug "read data from device #{path}: #{data.inspect}"
               return data
             end
           end
@@ -361,7 +365,7 @@ module HidApi
     # Sends a feature report to the device.
     def send_feature_report(data)
       raise ArgumentError, 'data must not be blank' if data.nil? || data.length < 1
-      raise HidApi::DeviceNotOpen unless open?
+      raise HIDAPI::DeviceNotOpen unless open?
 
       data, report_number, skipped_report_id = clean_output_data(data)
 
@@ -418,10 +422,10 @@ module HidApi
       begin
         # does not require an interface, so open from the usb_dev instead of using our open method.
         data = usb_device.open { |handle| handle.string_descriptor_ascii(index) }
-        HidApi.debug("read string at index #{index} for device #{path}: #{data.inspect}")
+        HIDAPI.debug("read string at index #{index} for device #{path}: #{data.inspect}")
         data
       rescue =>e
-        HidApi.debug("failed to read string at index #{index} for device #{path}: #{e.inspect}")
+        HIDAPI.debug("failed to read string at index #{index} for device #{path}: #{e.inspect}")
         on_failure || ''
       end
     end
@@ -512,7 +516,7 @@ module HidApi
         # perform the initial submission, the callback will resubmit.
         transfer.submit!
       rescue =>e
-        HidApi.debug "failed to initialize read thread for device #{path}: #{e.inspect}"
+        HIDAPI.debug "failed to initialize read thread for device #{path}: #{e.inspect}"
         self.shutdown_thread = true
         raise e
       ensure
@@ -526,9 +530,9 @@ module HidApi
           context.handle_events 0
         rescue LIBUSB::ERROR_BUSY, LIBUSB::ERROR_TIMEOUT, LIBUSB::ERROR_OVERFLOW, LIBUSB::ERROR_INTERRUPTED => e
           # non fatal errors.
-          HidApi.debug "non-fatal error for read_thread on device #{path}: #{e.inspect}"
+          HIDAPI.debug "non-fatal error for read_thread on device #{path}: #{e.inspect}"
         rescue => e
-          HidApi.debug "fatal error for read_thread on device #{path}: #{e.inspect}"
+          HIDAPI.debug "fatal error for read_thread on device #{path}: #{e.inspect}"
           self.shutdown_thread = true
           raise e
         end
@@ -557,7 +561,7 @@ module HidApi
               begin
                 proc.call(self, data)
               rescue =>e
-                HidApi.debug "read_hook failed for device #{path}: #{e.inspect}"
+                HIDAPI.debug "read_hook failed for device #{path}: #{e.inspect}"
                 false
               end
           break if consumed
@@ -574,24 +578,24 @@ module HidApi
           self.shutdown_thread = true
           transfer_cancelled.completed = true
         end
-        HidApi.debug "read transfer cancelled for device #{path}"
+        HIDAPI.debug "read transfer cancelled for device #{path}"
       elsif tr.status == :TRANSFER_NO_DEVICE
         mutex.synchronize do
           self.shutdown_thread = true
           transfer_cancelled.completed = true
         end
-        HidApi.debug "read transfer failed with no device for device #{path}"
+        HIDAPI.debug "read transfer failed with no device for device #{path}"
       elsif tr.status == :TRANSFER_TIMED_OUT
         # ignore timeouts, they are normal
       else
-        HidApi.debug "read transfer with unknown transfer code (#{tr.status}) for device #{path}"
+        HIDAPI.debug "read transfer with unknown transfer code (#{tr.status}) for device #{path}"
       end
 
       # resubmit the transfer object.
       begin
         tr.submit!
       rescue =>e
-        HidApi.debug "failed to resubmit transfer for device #{path}: #{e.inspect}"
+        HIDAPI.debug "failed to resubmit transfer for device #{path}: #{e.inspect}"
         mutex.synchronize do
           self.shutdown_thread = true
           transfer_cancelled.completed = true

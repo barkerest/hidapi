@@ -1,4 +1,4 @@
-module HidApi
+module HIDAPI
   ##
   # List of all known USB languages.
   class Language
