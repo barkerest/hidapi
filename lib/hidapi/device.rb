@@ -464,8 +464,9 @@ module HIDAPI
       proc = block if proc.nil? && block_given?
       if proc
         if proc.is_a?(Symbol) || proc.is_a?(String)
+          proc_name = proc
           proc = Proc.new do |dev, input_report|
-            dev.send(proc, dev, input_report)
+            dev.send(proc_name, dev, input_report)
           end
         end
         @read_hook << proc
@@ -484,8 +485,9 @@ module HIDAPI
       proc = block if proc.nil? && block_given?
       if proc
         if proc.is_a?(Symbol) || proc.is_a?(String)
+          proc_name = proc
           proc = Proc.new do |dev|
-            dev.send(proc, dev)
+            dev.send(proc_name, dev)
           end
         end
         @init_hook << proc
