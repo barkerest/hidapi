@@ -113,16 +113,24 @@ module HIDAPI
       # If the user wants to open one of those, we can simple parse the link to generate
       # the path that the library expects.
       if File.exist?(path)
-        raise HIDAPI::DevicePathInvalid, 'Cannot open file paths other than /dev/hidapi paths.' unless path.index('/dev/hidapi/') == 0
 
-        path = File.expand_path(File.readlink(path), File.dirname(path))
+        hidapi_regex = /^\/dev\/hidapi\//
+        usb_bus_regex = /^\/dev\/bus\/usb\/(?<BUS>\d+)\/(?<ADDR>\d+)$/
+
+        if hidapi_regex.match(path)
+          path = File.expand_path(File.readlink(path), File.dirname(path))
+        elsif !usb_bus_regex.match(path)
+          raise HIDAPI::DevicePathInvalid, 'Cannot open file paths other than /dev/hidapi/XXX or /dev/bus/usb/XXX/XXX paths.'
+        end
 
         # path should now be in the form /dev/bus/usb/AAA/BBB
-        match = /\/dev\/bus\/usb\/(?<BUS>\d+)\/(?<ADDR>\d+)/.match(path)
+        match = usb_bus_regex.match(path)
 
         raise HIDAPI::DevicePathInvalid, "Link target does not appear valid (#{path})." unless match
 
-        path = HIDAPI::Device.validate_path("#{match['BUS']}:#{match['ADDR']}:0")
+        interface = (options.delete(:interface) || 0).to_s(16)
+
+        path = HIDAPI::Device.validate_path("#{match['BUS']}:#{match['ADDR']}:#{interface}")
       end
 
       valid_path = HIDAPI::Device.validate_path(path)
