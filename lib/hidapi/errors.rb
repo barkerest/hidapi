@@ -15,4 +15,8 @@ module HIDAPI
   ##
   # An open device is required for the method called.
   DeviceNotOpen = Class.new(HidApiError)
+
+  ##
+  # Device path invalid.
+  DevicePathInvalid = Class.new(HidApiError)
 end

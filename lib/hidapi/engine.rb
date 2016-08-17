@@ -23,6 +23,17 @@ module HIDAPI
     def enumerate(vendor_id = 0, product_id = 0, options = {})
       raise HIDAPI::HidApiError, 'not initialized' unless @context
 
+      if vendor_id.is_a?(Hash) || (vendor_id.is_a?(String) && options.empty?)
+        options = vendor_id
+        vendor_id = 0
+        product_id = 0
+      end
+
+      if product_id.is_a?(Hash) || (product_id.is_a?(String) && options.empty?)
+        options = product_id
+        product_id = 0
+      end
+
       if options.is_a?(String) || options.is_a?(Symbol)
         options = { as: options }
       end
@@ -58,6 +69,11 @@ module HIDAPI
       raise ArgumentError, 'vendor_id must be provided' if vendor_id.to_i == 0
       raise ArgumentError, 'product_id must be provided' if product_id.to_i == 0
 
+      if serial_number.is_a?(Hash)
+        options = serial_number
+        serial_number = nil
+      end
+
       klass = (options || {}).delete(:as) || 'HIDAPI::Device'
       klass = Object.const_get(klass) unless klass == :no_mapping
 
@@ -84,21 +100,42 @@ module HIDAPI
 
     ##
     # Opens the first device with the specified vendor_id, product_id, and optionally serial_number.
-    def open(vendor_id, product_id, serial_number = nil)
-      dev = get_device(vendor_id, product_id, serial_number)
+    def open(vendor_id, product_id, serial_number = nil, options = {})
+      dev = get_device(vendor_id, product_id, serial_number, options)
       dev.open if dev
     end
 
     ##
     # Gets the device with the specified path.
     def get_device_by_path(path, options = {})
+
+      # Our linux setup routine creates convenient /dev/hidapi/* links.
+      # If the user wants to open one of those, we can simple parse the link to generate
+      # the path that the library expects.
+      if File.exist?(path)
+        raise HIDAPI::DevicePathInvalid, 'Cannot open file paths other than /dev/hidapi paths.' unless path.index('/dev/hidapi/') == 0
+
+        path = File.expand_path(File.readlink(path), File.dirname(path))
+
+        # path should now be in the form /dev/bus/usb/AAA/BBB
+        match = /\/dev\/bus\/usb\/(?<BUS>\d+)\/(?<ADDR>\d+)/.match(path)
+
+        raise HIDAPI::DevicePathInvalid, "Link target does not appear valid (#{path})." unless match
+
+        path = HIDAPI::Device.validate_path("#{match['BUS']}:#{match['ADDR']}:0")
+      end
+
+      valid_path = HIDAPI::Device.validate_path(path)
+      raise HIDAPI::DevicePathInvalid, "Path should be in BUS:ADDRESS:INTERFACE format with each value being in hexadecimal (ie - 0001:01A:00), not #{path}." unless valid_path
+      path = valid_path
+
       klass = (options || {}).delete(:as) || 'HIDAPI::Device'
       klass = Object.const_get(klass) unless klass == :no_mapping
 
       enumerate(as: :no_mapping).each do |usb_dev|
         usb_dev.settings.each do |intf_desc|
           if intf_desc.bInterfaceClass == HID_CLASS
-            dev_path = HIDAPI::make_path(usb_dev, intf_desc.bInterfaceNumber)
+            dev_path = HIDAPI::Device.make_path(usb_dev, intf_desc.bInterfaceNumber)
             if dev_path == path
               if klass != :no_mapping
                 return klass.new(usb_dev, intf_desc.bInterfaceNumber)
@@ -113,8 +150,8 @@ module HIDAPI
 
     ##
     # Opens the device with the specified path.
-    def open_path(path)
-      dev = get_device_by_path(path)
+    def open_path(path, options = {})
+      dev = get_device_by_path(path, options)
       dev.open if dev
     end
 

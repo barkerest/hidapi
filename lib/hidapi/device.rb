@@ -413,10 +413,29 @@ module HIDAPI
 
     ##
     # Generates a path for a device.
-    def self.make_path(usb_dev, interface)
-      bus = usb_dev.bus_number
-      address = usb_dev.device_address
+    def self.make_path(usb_dev, interface = 0)
+      if usb_dev.is_a?(Hash)
+        bus = usb_dev[:bus] || usb_dev['bus']
+        address = usb_dev[:device_address] || usb_dev['device_address']
+      else
+        bus = usb_dev.bus_number
+        address = usb_dev.device_address
+      end
       "#{bus.to_hex(4)}:#{address.to_hex(4)}:#{interface.to_hex(2)}"
+    end
+
+    ##
+    # Validates a device path.
+    def self.validate_path(path)
+      match = /(?<BUS>\d+):(?<ADDR>\d+):(?<IFACE>\d+)/.match(path)
+      return nil unless match
+      make_path(
+          {
+              bus: match['BUS'].to_i(16),
+              device_address: match['ADDR'].to_i(16)
+          },
+          match['IFACE'].to_i(16)
+      )
     end
 
 
@@ -425,7 +444,11 @@ module HIDAPI
     def read_string(index, on_failure = '')
       begin
         # does not require an interface, so open from the usb_dev instead of using our open method.
-        data = usb_device.open { |handle| handle.string_descriptor_ascii(index) }
+        data = if open?
+                 handle.string_descriptor_ascii(index)
+               else
+                 usb_device.open { |handle| handle.string_descriptor_ascii(index) }
+               end
         HIDAPI.debug("read string at index #{index} for device #{path}: #{data.inspect}")
         data
       rescue =>e
