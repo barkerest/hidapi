@@ -8,8 +8,8 @@ module HIDAPI
     attr_reader :vendor_id, :product_id, :simple_name, :interface
 
     def initialize(vendor_id, product_id, simple_name, interface)
-      @vendor_id = vendor_id.to_s.strip.to_i(16)
-      @product_id = product_id.to_s.strip.to_i(16)
+      @vendor_id = interpret_id(vendor_id)
+      @product_id = interpret_id(product_id)
       @simple_name = simple_name.to_s.strip.gsub(' ', '_').gsub(/[^A-Za-z0-9_\-]/, '')
       @interface = interface.to_s.strip.to_i
       @temp_dir = Dir.mktmpdir('hidapi_setup')
@@ -229,6 +229,11 @@ LABEL="hidapi_rules_end"
       true
     end
 
+    private
+
+    def interpret_id(id)
+      id.is_a?(Integer) ? id : id.to_s.strip.to_i(16)
+    end
   end
 end
 
