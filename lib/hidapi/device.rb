@@ -577,6 +577,7 @@ module HIDAPI
       until shutdown_thread
         begin
           context.handle_events 0
+          sleep 0
         rescue LIBUSB::ERROR_BUSY, LIBUSB::ERROR_TIMEOUT, LIBUSB::ERROR_OVERFLOW, LIBUSB::ERROR_INTERRUPTED => e
           # non fatal errors.
           HIDAPI.debug "non-fatal error for read_thread on device #{path}: #{e.inspect}"
