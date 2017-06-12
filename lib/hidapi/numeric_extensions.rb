@@ -1,5 +1,5 @@
 
-Fixnum.class_eval do
+Integer.class_eval do
 
   ##
   # Converts an integer into a hex string with the specified length.
