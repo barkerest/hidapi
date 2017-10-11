@@ -667,3 +667,5 @@ module HIDAPI
 
   end
 end
+
+# TODO: Need to test out the mutex synchronizations to see if they help with occasional errors or cause more.
