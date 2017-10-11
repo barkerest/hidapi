@@ -192,7 +192,7 @@ module HIDAPI
     # Returns the device.
     def open
       if open?
-        self.open_count = open_count + 1
+        self.open_count += 1
         if open_count < 1
           HIDAPI.debug "open_count for open device #{path} is #{open_count}"
           self.open_count = 1
@@ -242,7 +242,7 @@ module HIDAPI
         self.thread_initialized = false
         self.shutdown_thread = false
         self.thread = Thread.start(self) { |dev| dev.send(:execute_read_thread) }
-        sleep 0 until thread_initialized
+        sleep 0.001 until thread_initialized
 
       rescue =>e
         handle.close rescue nil
@@ -267,20 +267,24 @@ module HIDAPI
 
       if output_endpoint.nil?
         # No interrupt out endpoint, use the control endpoint.
-        handle.control_transfer(
-            bmRequestType: LIBUSB::REQUEST_TYPE_CLASS | LIBUSB::RECIPIENT_INTERFACE | LIBUSB::ENDPOINT_OUT,
-            bRequest: 0x09,   # HID Set_Report
-            wValue: (2 << 8) | report_number,  # HID output = 2
-            wIndex: interface,
-            dataOut: data
-        )
+        mutex.synchronize do
+          handle.control_transfer(
+              bmRequestType: LIBUSB::REQUEST_TYPE_CLASS | LIBUSB::RECIPIENT_INTERFACE | LIBUSB::ENDPOINT_OUT,
+              bRequest: 0x09,   # HID Set_Report
+              wValue: (2 << 8) | report_number,  # HID output = 2
+              wIndex: interface,
+              dataOut: data
+          )
+        end
         data.length + (skipped_report_id ? 1 : 0)
       else
         # Use the interrupt out endpoint.
-        handle.interrupt_transfer(
-            endpoint: output_endpoint,
-            dataOut: data
-        )
+        mutex.synchronize do
+          handle.interrupt_transfer(
+              endpoint: output_endpoint,
+              dataOut: data
+          )
+        end
       end
     end
 
@@ -323,7 +327,7 @@ module HIDAPI
               return data
             end
           end
-          sleep 0
+          sleep 0.001
         end
 
         # error, return nil
@@ -340,7 +344,7 @@ module HIDAPI
               return data
             end
           end
-          sleep 0
+          sleep 0.001
         end
 
         # no input, return empty.
@@ -373,13 +377,15 @@ module HIDAPI
 
       data, report_number, skipped_report_id = clean_output_data(data)
 
-      handle.control_transfer(
-          bmRequestType: LIBUSB::REQUEST_TYPE_CLASS | LIBUSB::RECIPIENT_INTERFACE | LIBUSB::ENDPOINT_OUT,
-          bRequest: 0x09,   # HID Set_Report
-          wValue: (3 << 8) | report_number,   # HID feature = 3
-          wIndex: interface,
-          dataOut: data
-      )
+      mutex.synchronize do
+        handle.control_transfer(
+            bmRequestType: LIBUSB::REQUEST_TYPE_CLASS | LIBUSB::RECIPIENT_INTERFACE | LIBUSB::ENDPOINT_OUT,
+            bRequest: 0x09,   # HID Set_Report
+            wValue: (3 << 8) | report_number,   # HID feature = 3
+            wIndex: interface,
+            dataOut: data
+        )
+      end
 
       data.length + (skipped_report_id ? 1 : 0)
     end
@@ -390,13 +396,15 @@ module HIDAPI
 
       buffer_size ||= input_ep_max_packet_size
 
-      handle.control_transfer(
-          bmRequestType: LIBUSB::REQUEST_TYPE_CLASS | LIBUSB::RECIPIENT_INTERFACE | LIBUSB::ENDPOINT_IN,
-          bRequest: 0x01,   # HID Get_Report
-          wValue: (3 << 8) | report_number,
-          wIndex: interface,
-          dataIn: buffer_size
-      )
+      mutex.synchronize do
+        handle.control_transfer(
+            bmRequestType: LIBUSB::REQUEST_TYPE_CLASS | LIBUSB::RECIPIENT_INTERFACE | LIBUSB::ENDPOINT_IN,
+            bRequest: 0x01,   # HID Get_Report
+            wValue: (3 << 8) | report_number,
+            wIndex: interface,
+            dataIn: buffer_size
+        )
+      end
 
     end
 
@@ -444,11 +452,14 @@ module HIDAPI
     def read_string(index, on_failure = '')
       begin
         # does not require an interface, so open from the usb_dev instead of using our open method.
-        data = if open?
-                 handle.string_descriptor_ascii(index)
-               else
-                 usb_device.open { |handle| handle.string_descriptor_ascii(index) }
-               end
+        data = mutex.synchronize do
+          if open?
+            handle.string_descriptor_ascii(index)
+          else
+            usb_device.open { |handle| handle.string_descriptor_ascii(index) }
+          end
+        end
+
         HIDAPI.debug("read string at index #{index} for device #{path}: #{data.inspect}")
         data
       rescue =>e
@@ -577,7 +588,7 @@ module HIDAPI
       until shutdown_thread
         begin
           context.handle_events 0
-          sleep 0
+          sleep 0.001   # don't peg the CPU.
         rescue LIBUSB::ERROR_BUSY, LIBUSB::ERROR_TIMEOUT, LIBUSB::ERROR_OVERFLOW, LIBUSB::ERROR_INTERRUPTED => e
           # non fatal errors.
           HIDAPI.debug "non-fatal error for read_thread on device #{path}: #{e.inspect}"
