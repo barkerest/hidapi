@@ -16,6 +16,33 @@ module HIDAPI
       ObjectSpace.define_finalizer(self, ->{ FileUtils.rm_rf(@temp_dir) })
     end
 
+    def uninstall
+      if operating_system == :osx
+        uninstall_osx
+      else
+        puts "Your operating system was detected as '#{operating_system}', but I don't have an uninstall routine for that."
+      end
+      true
+    end
+
+    def uninstall_osx
+
+      target = "/System/Library/Extensions/#{simple_name}.kext"
+
+      if not Dir.exist?(target)
+        puts 'A kext with the specified name does not exist.'
+        return false
+      end
+
+      puts 'Uninstalling kext...'
+      `sudo rm -rf #{target}`
+      `sudo touch /System/Library/Extensions`
+
+      puts "The kext has been uninstalled.\nYou may have to unplug/plug the device or restart your computer."
+
+      true
+    end
+
     def run
       if valid_options?
         if operating_system == :osx
