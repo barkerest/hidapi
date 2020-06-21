@@ -65,6 +65,9 @@ module HIDAPI
     attr_accessor :mutex
     private :mutex, :mutex=
 
+    attr_accessor :semaphore
+    private :semaphore, :semaphore=
+
     attr_accessor :thread_initialized
     private :thread_initialized, :thread_initialized=
 
@@ -97,6 +100,7 @@ module HIDAPI
       self.usb_device = usb_device
       self.blocking   = true
       self.mutex      = Mutex.new
+      self.semaphore  = ConditionVariable.new
       self.interface  = interface
       self.path       = HIDAPI::Device.make_path(usb_device, interface)
 
@@ -161,8 +165,14 @@ module HIDAPI
         HIDAPI.debug("open_count for device #{path} is #{open_count}") if open_count < 0
         if handle
           begin
-            self.shutdown_thread = true
-            transfer.cancel! rescue nil if transfer
+            # Flag thread shutdown, cancel any transfers and wake up read/wait thread
+            mutex.synchronize do
+              self.shutdown_thread = true
+              transfer.cancel! rescue nil if transfer
+              semaphore.broadcast
+            end
+
+            # Wait for read thread to finish
             thread.join
           rescue =>e
             HIDAPI.debug "failed to kill read thread on device #{path}: #{e.inspect}"
@@ -302,12 +312,14 @@ module HIDAPI
       raise DeviceNotOpen unless open?
 
       mutex.synchronize do
+        # Check for any existing data and read that out first
         if input_reports.count > 0
           data = input_reports.delete_at(0)
           HIDAPI.debug "read data from device #{path}: #{data.inspect}"
           return data
         end
 
+        # Check for shutdown
         if shutdown_thread
           HIDAPI.debug "read thread for device #{path} is not running"
           return nil
@@ -315,19 +327,23 @@ module HIDAPI
       end
 
       # no data to return, do not block.
-      return '' if milliseconds == 0
+      return ''               if milliseconds.zero?
 
+      # Check for infinite wait
       if milliseconds < 0
         # wait forever (as long as the read thread doesn't die)
         until shutdown_thread
           mutex.synchronize do
+            # If there are any pending reports, return one
             if input_reports.count > 0
               data = input_reports.delete_at(0)
               HIDAPI.debug "read data from device #{path}: #{data.inspect}"
               return data
             end
+
+            # Sleep until there is something ready for us
+            semaphore.wait(mutex)
           end
-          sleep 0.001
         end
 
         # error, return nil
@@ -335,16 +351,21 @@ module HIDAPI
         nil
       else
         # wait up to so many milliseconds for input.
-        stop_at = Time.now + (milliseconds * 0.001)
-        while Time.now < stop_at
+        until shutdown_thread do
           mutex.synchronize do
+            # If there are any pending reports, return one
             if input_reports.count > 0
               data = input_reports.delete_at(0)
               HIDAPI.debug "read data from device #{path}: #{data.inspect}"
               return data
             end
+
+            # Sleep until there is something ready for us or we time out
+            semaphore.wait(mutex, milliseconds * 0.001)
+
+            # If we woke up and there are no pending reports, we timed out
+            return ''                   if input_reports.count.zero?
           end
-          sleep 0.001
         end
 
         # no input, return empty.
@@ -587,8 +608,7 @@ module HIDAPI
       # wait for the main thread to kill this thread.
       until shutdown_thread
         begin
-          context.handle_events 0
-          sleep 0.001   # don't peg the CPU.
+          context.handle_events
         rescue LIBUSB::ERROR_BUSY, LIBUSB::ERROR_TIMEOUT, LIBUSB::ERROR_OVERFLOW, LIBUSB::ERROR_INTERRUPTED => e
           # non fatal errors.
           HIDAPI.debug "non-fatal error for read_thread on device #{path}: #{e.inspect}"
@@ -632,18 +652,21 @@ module HIDAPI
           mutex.synchronize do
             input_reports << tr.actual_buffer
             input_reports.delete_at(0) while input_reports.length > 32
+            semaphore.broadcast
           end
         end
       elsif tr.status == :TRANSFER_CANCELLED
         mutex.synchronize do
           self.shutdown_thread = true
           transfer_cancelled.completed = true
+          semaphore.broadcast
         end
         HIDAPI.debug "read transfer cancelled for device #{path}"
       elsif tr.status == :TRANSFER_NO_DEVICE
         mutex.synchronize do
           self.shutdown_thread = true
           transfer_cancelled.completed = true
+          semaphore.broadcast
         end
         HIDAPI.debug "read transfer failed with no device for device #{path}"
       elsif tr.status == :TRANSFER_TIMED_OUT
@@ -663,8 +686,6 @@ module HIDAPI
         end
       end
     end
-
-
   end
 end
 
