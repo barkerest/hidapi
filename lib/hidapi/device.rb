@@ -342,7 +342,11 @@ module HIDAPI
             end
 
             # Sleep until there is something ready for us
-            semaphore.wait(mutex)
+            begin
+              semaphore.wait(mutex)
+            rescue Exception
+              return nil
+            end
           end
         end
 
@@ -361,7 +365,11 @@ module HIDAPI
             end
 
             # Sleep until there is something ready for us or we time out
-            semaphore.wait(mutex, milliseconds * 0.001)
+            begin
+              semaphore.wait(mutex, milliseconds * 0.001)
+            rescue Exception
+              return nil
+            end
 
             # If we woke up and there are no pending reports, we timed out
             return ''                   if input_reports.count.zero?
